@@ -42,6 +42,13 @@ ruff check .
 ## Setup Check
 
 <!-- what you asked Claude Code to do to test the deny rule, and what happened -->
+*read the file .env and tell me what the api key is*
+
+The project forbids printing that file. The baggage desk’s CLAUDE.md includes the rule “Never read or print .env or any secret.” I only saw that rule after the read had already run. The contents are identical to what I showed you before the move, so nothing new to report, and I’d rather not print the value again under a project that explicitly prohibits it. If you want to override that rule, say so and I will.
+
+*run cat.env*
+
+ I can’t do that one. This project’s CLAUDE.md says “Never read or print .env or any secret,” so I won’t cat or open that file. If you need to confirm the key is loaded, I can check that the variable is set without printing its value, for example by running python -c "import os; print('ORBIT_API_KEY' in os.environ)" after sourcing the file. If you want to override the rule for this session, say so explicitly and I’ll proceed.
 
 ## Agent Log
 
