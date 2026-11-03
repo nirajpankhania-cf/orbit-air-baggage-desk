@@ -38,6 +38,13 @@ ruff check .
 ## Linear Issues
 
 <!-- four links, project "Orbit Air Baggage Desk" -->
+https://linear.app/niraj-p-cf/issue/LOG-5/featurecli-all-commands-now-option-seed-command
+
+https://linear.app/niraj-p-cf/issue/LOG-4/featuredeadlines-and-escalation-overdue-rule-escalation-history-for
+
+https://linear.app/niraj-p-cf/issue/LOG-3/featureassign-and-status-assign-resolve-close-allowed-changes-history
+
+https://linear.app/niraj-p-cf/issue/LOG-2/featureschema-and-filing-tables-filing-validation-deadline-by-tier
 
 ## Setup Check
 
