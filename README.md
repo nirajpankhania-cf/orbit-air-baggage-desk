@@ -61,6 +61,30 @@ The project forbids printing that file. The baggage desk’s CLAUDE.md includes 
 
 ### feature/schema-and-filing
 <!-- Prompt / What the agent did / What I checked or changed -->
+**Prompt given**
+
+> The failing tests in tests/test_claims.py are the spec. Read CLAUDE.md and PLAN.md first.
+>
+> Implement:
+> - db.py: connect(path) returning a sqlite3 connection with row_factory=sqlite3.Row and PRAGMA foreign_keys=ON, and init_db(conn) creating the `claims` and `history` tables exactly as described in PLAN.md, with CHECK constraints on claim_type, tier and status.
+> - claims.py: file_claim(conn, passenger, flight, claim_type, tier, note, now), list_claims(conn, status=None, tier=None) and get_history(conn, claim_id). file_claim validates inputs (clear ValueError messages naming the field), computes deadline = now + tier hours, inserts the claim and its first history row (old_status NULL -> 'open', changed_by 'system') in ONE transaction using `with conn:`, and returns the new claim id. Store timestamps as ISO strings via .isoformat().
+>
+> Constraints: do not read the clock anywhere — `now` is always a parameter. Do not create main.py yet. Do not modify anything under tests/. Keep functions small and typed.
+>
+> Check: run `pytest -q` and `ruff check .`; both must be clean before you finish.
+
+**What the agent did**
+
+Tests were committed first in `[short sha]`; `pytest -q` at that point failed with `ModuleNotFoundError: No module named 'claims'`. The agent then created `db.py` (`connect`, `init_db` with the two tables and CHECK constraints on `claim_type`, `tier` and `status`) and `claims.py` (`file_claim`, `list_claims`, `get_history`, plus the tier-hours mapping and the validation helpers). It ran pytest and ruff itself before stopping; the Stop hook ran pytest again and allowed it to finish.
+
+**What I checked or changed**
+
+- Ran `pytest -q` myself: `[N] passed`. Ran `ruff check .`: clean.
+- `git diff --stat tests/` was empty, so the test file was not touched after its commit.
+- `grep -n "now()\|utcnow" claims.py db.py` returned nothing: no rule code reads the clock.
+- Read both files line by line. Confirmed the claim INSERT and the history INSERT in `file_claim` sit inside a single `with conn:` block, so a failed history write rolls the claim back. Confirmed the hours mapping is gold=4, silver=24, standard=72 and that validation strips whitespace so `"  "` counts as blank.
+- Confirmed `list_claims` combines the status and tier filters with AND, not OR, by reading the SQL it builds.
+- [If anything was wrong or you changed something, describe it here with the specific line. If not, delete this bullet.]
 
 ### feature/assign-and-status
 
