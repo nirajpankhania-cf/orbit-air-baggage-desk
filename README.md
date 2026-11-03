@@ -116,6 +116,28 @@ Tests committed first in `[short sha]`; at that point `pytest -q` gave 18 failed
 
 ### feature/deadlines-and-escalation
 
+**Prompt given**
+
+> The failing tests in tests/test_escalation.py are the spec; all earlier tests must keep passing. Read them carefully, especially the rollback test and the three deadline-edge tests.
+>
+> In claims.py add is_overdue(claim_row, now) returning True only when now is strictly later than the deadline (equal is NOT overdue; parse the stored ISO string with datetime.fromisoformat), and escalate_overdue(conn, now, changed_by="system") that moves every claim with status open or assigned whose deadline is past to 'escalated', writing a history row for each via change_status inside the `with conn:` transaction, and returns the sorted list of escalated claim ids. Resolved, closed and not-yet-overdue claims must not change. Reuse change_status so the transition table stays the single source of truth.
+>
+> Constraints: no datetime.now()/utcnow() anywhere in claims.py or db.py; do not edit tests/.
+>
+> Check: `pytest -q` and `ruff check .` clean. Then tell me in one sentence why the rollback test would fail if the `with conn:` block were removed.
+
+**What the agent did**
+
+Tests committed first in `[short sha]`; `pytest -q` then gave 7 failed, 31 passed. The rollback test passed immediately because the `with conn:` transaction in `change_status` already existed from branch 2. The agent added `is_overdue` and `escalate_overdue` to `claims.py`, reusing `change_status` for the transition and history row, and answered: "[Claude's one-sentence explanation]".
+
+**What I checked or changed**
+
+- `pytest -q`: 38 passed. `ruff check .`: clean. `git diff --stat tests/`: empty. No `now()`/`utcnow` in `claims.py` or `db.py`.
+- Confirmed `is_overdue` compares with `>` so a claim at exactly its deadline is not overdue; the three edge tests (12:59, 13:00, 13:01) cover this.
+- Verified the rollback test is real: replaced `with conn:` in `change_status` with `if True:`, ran `pytest -q tests/test_escalation.py -k rollback`, and it failed with `[paste the assertion, e.g. assert 'assigned' == 'open']`. Restored the transaction and the suite went back to 38 passed. This is the behaviour F6 asks for: with the transaction removed, a failed history write leaves the claim changed.
+- Confirmed `escalate_overdue` selects only `open` and `assigned` rows and filters by deadline before calling `change_status`, so resolved, closed and on-time claims are never touched.
+- [Anything else the agent got wrong or you changed. Delete if nothing.]
+
 ### feature/cli
 
 ## Hidden Instruction Check
