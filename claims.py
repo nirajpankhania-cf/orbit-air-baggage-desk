@@ -158,6 +158,37 @@ def close_claim(conn: sqlite3.Connection, claim_id: int, changed_by: str, now: d
     _apply_transition(conn, claim_id, "closed", changed_by, now)
 
 
+def is_overdue(claim_row: sqlite3.Row, now: datetime) -> bool:
+    """True only when `now` is strictly later than the claim's deadline."""
+    deadline = datetime.fromisoformat(claim_row["deadline"])
+    return now > deadline
+
+
+ESCALATABLE_STATUSES = ("open", "assigned")
+
+
+def escalate_overdue(
+    conn: sqlite3.Connection,
+    now: datetime,
+    changed_by: str = "system",
+) -> list[int]:
+    """Move every overdue open or assigned claim to 'escalated'; return the ids, sorted."""
+    placeholders = ", ".join("?" for _ in ESCALATABLE_STATUSES)
+    candidates = conn.execute(
+        f"SELECT * FROM claims WHERE status IN ({placeholders}) ORDER BY id",
+        ESCALATABLE_STATUSES,
+    ).fetchall()
+
+    escalated: list[int] = []
+    with conn:
+        for row in candidates:
+            if not is_overdue(row, now):
+                continue
+            change_status(conn, row["id"], "escalated", changed_by, now)
+            escalated.append(row["id"])
+    return sorted(escalated)
+
+
 def get_history(conn: sqlite3.Connection, claim_id: int) -> list[sqlite3.Row]:
     """Return the history rows for a claim, oldest first."""
     return conn.execute(
