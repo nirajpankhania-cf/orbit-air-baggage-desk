@@ -10,6 +10,15 @@ CLAIM_TYPES = ("delayed", "lost", "damaged")
 TIERS = ("standard", "silver", "gold")
 DEADLINE_HOURS = {"gold": 4, "silver": 24, "standard": 72}
 
+# Legal status moves, from PLAN.md. 'closed' is terminal.
+ALLOWED_TRANSITIONS: dict[str, set[str]] = {
+    "open": {"assigned", "escalated"},
+    "assigned": {"resolved", "escalated"},
+    "escalated": {"assigned", "resolved"},
+    "resolved": {"closed"},
+    "closed": set(),
+}
+
 
 def _validate_claim(passenger: str, flight: str, claim_type: str, tier: str) -> None:
     if not passenger or not passenger.strip():
@@ -77,6 +86,76 @@ def list_claims(
         params.append(tier)
     where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
     return conn.execute(f"SELECT * FROM claims{where} ORDER BY id", params).fetchall()
+
+
+def get_claim(conn: sqlite3.Connection, claim_id: int) -> sqlite3.Row:
+    """Return the claim row, or raise ValueError if no such claim exists."""
+    row = conn.execute("SELECT * FROM claims WHERE id = ?", (claim_id,)).fetchone()
+    if row is None:
+        raise ValueError(f"no claim with id {claim_id}")
+    return row
+
+
+def _apply_transition(
+    conn: sqlite3.Connection,
+    claim_id: int,
+    new_status: str,
+    changed_by: str,
+    now: datetime,
+    agent: str | None = None,
+) -> None:
+    """Check the move against ALLOWED_TRANSITIONS, then write claim + history atomically."""
+    old_status = get_claim(conn, claim_id)["status"]
+    if new_status not in ALLOWED_TRANSITIONS.get(old_status, set()):
+        raise ValueError(
+            f"cannot move claim {claim_id} from {old_status!r} to {new_status!r}"
+        )
+
+    changed_at = now.isoformat()
+    with conn:
+        if agent is None:
+            conn.execute(
+                "UPDATE claims SET status = ? WHERE id = ?",
+                (new_status, claim_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE claims SET status = ?, agent = ? WHERE id = ?",
+                (new_status, agent, claim_id),
+            )
+        conn.execute(
+            """
+            INSERT INTO history (claim_id, old_status, new_status, changed_by, changed_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (claim_id, old_status, new_status, changed_by, changed_at),
+        )
+
+
+def change_status(
+    conn: sqlite3.Connection,
+    claim_id: int,
+    new_status: str,
+    changed_by: str,
+    now: datetime,
+) -> None:
+    """Move a claim to `new_status` if the table allows it; otherwise raise ValueError."""
+    _apply_transition(conn, claim_id, new_status, changed_by, now)
+
+
+def assign_claim(conn: sqlite3.Connection, claim_id: int, agent: str, now: datetime) -> None:
+    """Assign a claim to an agent. Allowed from 'open' or 'escalated' per the table."""
+    _apply_transition(conn, claim_id, "assigned", agent, now, agent=agent)
+
+
+def resolve_claim(conn: sqlite3.Connection, claim_id: int, changed_by: str, now: datetime) -> None:
+    """Mark a claim resolved. Allowed from 'assigned' or 'escalated' per the table."""
+    _apply_transition(conn, claim_id, "resolved", changed_by, now)
+
+
+def close_claim(conn: sqlite3.Connection, claim_id: int, changed_by: str, now: datetime) -> None:
+    """Close a resolved claim. Allowed only from 'resolved' per the table."""
+    _apply_transition(conn, claim_id, "closed", changed_by, now)
 
 
 def get_history(conn: sqlite3.Connection, claim_id: int) -> list[sqlite3.Row]:
