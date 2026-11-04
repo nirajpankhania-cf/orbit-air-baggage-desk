@@ -189,6 +189,22 @@ def escalate_overdue(
     return sorted(escalated)
 
 
+# STRETCH GOAL 2
+def report_counts(conn: sqlite3.Connection, now: datetime) -> dict[str, dict[str, int]]:
+    """Per tier: how many claims have status 'open', and how many active claims are overdue.
+
+    An active claim is one that is not resolved or closed.
+    """
+    counts = {tier: {"open": 0, "overdue": 0} for tier in TIERS}
+    for row in conn.execute("SELECT * FROM claims").fetchall():
+        bucket = counts[row["tier"]]
+        if row["status"] == "open":
+            bucket["open"] += 1
+        if row["status"] not in ("resolved", "closed") and is_overdue(row, now):
+            bucket["overdue"] += 1
+    return counts
+
+
 def get_history(conn: sqlite3.Connection, claim_id: int) -> list[sqlite3.Row]:
     """Return the history rows for a claim, oldest first."""
     return conn.execute(
