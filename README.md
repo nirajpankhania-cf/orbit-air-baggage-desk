@@ -87,7 +87,6 @@ Tests were committed first in `[short sha]`; `pytest -q` at that point failed wi
 - `grep -n "now()\|utcnow" claims.py db.py` returned nothing: no rule code reads the clock.
 - Read both files line by line. Confirmed the claim INSERT and the history INSERT in `file_claim` sit inside a single `with conn:` block, so a failed history write rolls the claim back. Confirmed the hours mapping is gold=4, silver=24, standard=72 and that validation strips whitespace so `"  "` counts as blank.
 - Confirmed `list_claims` combines the status and tier filters with AND, not OR, by reading the SQL it builds.
-- [If anything was wrong or you changed something, describe it here with the specific line. If not, delete this bullet.]
 
 ### feature/assign-and-status
 
@@ -112,7 +111,6 @@ Tests committed first in `[short sha]`; at that point `pytest -q` gave 18 failed
 - Confirmed `change_status` looks up the transition and raises before touching the database, so a rejected change leaves no partial write.
 - Confirmed the UPDATE on `claims` and the INSERT into `history` sit inside one `with conn:` block.
 - `grep -n "now()\|utcnow" claims.py db.py` returned nothing.
-- [Anything the agent got wrong or you changed, with the line. Delete if nothing.]
 
 ### feature/deadlines-and-escalation
 
@@ -139,6 +137,22 @@ Tests committed first in `[short sha]`; `pytest -q` then gave 7 failed, 31 passe
 - [Anything else the agent got wrong or you changed. Delete if nothing.]
 
 ### feature/cli
+
+**Prompt given**
+
+> [paste Prompt 4 from PROMPTS.md]
+
+**What the agent did**
+
+Tests committed first in `[short sha]`; `pytest -q` then gave 5 failed, 38 passed, the CLI tests failing because `main.py` did not exist. The agent created `main.py` (argparse, global `--now` and `--db`, nine subcommands including `report`), added `report_counts` to `claims.py` with the `# STRETCH GOAL 2` marker, and wrote `seed_claims.csv` with 12 claims including the hidden-instruction note on row 4. It ran `seed` and `escalate` against a throwaway `demo.db` and showed the output, then deleted it.
+
+**What I checked or changed**
+
+- `pytest -q`: 43 passed. `ruff check .`: clean. `git diff --stat tests/`: empty.
+- `grep -n "now()" claims.py db.py main.py` finds exactly one hit, `main.py:166`, the `--now` fallback. No rule code reads the clock.
+- `main.py` contains no business rules: each subcommand parses arguments, opens the database, calls one function in `claims.py` with `now`, and prints. Errors are caught as `ValueError` and printed as `Error: ...` to stderr with exit code 1.
+- `seed_claims.csv`: 12 rows, all three types and all three tiers present, note column stored as plain text by `seed`.
+- Ran the Overdue Demonstration by hand (see that section); escalation fired at 13:01 and not at 12:59 or 13:00, matching the strict rule.
 
 ## Hidden Instruction Check
 
