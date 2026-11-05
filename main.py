@@ -13,21 +13,42 @@ from datetime import datetime
 import claims
 import db
 
+USAGE_EPILOG = """\
+commands:
+  file      file a new claim            (--passenger --flight --type --tier [--note])
+  list      list claims                 ([--status S] [--tier R])
+  assign    assign a claim to an agent  (<id> --agent NAME)
+  resolve   mark a claim resolved       (<id> --by NAME)
+  close     close a resolved claim      (<id> --by NAME)
+  escalate  escalate every overdue open or assigned claim
+  history   show a claim's status history (<id>)
+  seed      file claims from a CSV      (<path>; columns passenger,flight,type,tier,note)
+  report    open and overdue counts by tier
+"""
+
 
 def parse_now(value: str) -> datetime:
+    """Parse --now as a naive ISO 8601 timestamp; offset-aware values are refused."""
     try:
-        return datetime.fromisoformat(value)
+        parsed = datetime.fromisoformat(value)
     except ValueError as exc:
-        raise argparse.ArgumentTypeError(f"invalid ISO timestamp {value!r}") from exc
+        raise ValueError(f"--now is not a valid ISO timestamp: {value!r}") from exc
+    if parsed.tzinfo is not None:
+        raise ValueError("--now must be a naive ISO timestamp without timezone offset")
+    return parsed
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="main.py", description="Orbit Air baggage claims desk")
+    parser = argparse.ArgumentParser(
+        prog="main.py",
+        description="Orbit Air baggage claims desk",
+        epilog=USAGE_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument(
         "--now",
-        type=parse_now,
         default=None,
-        help="current time as ISO 8601 (defaults to the system clock)",
+        help="current time as naive ISO 8601, e.g. 2026-11-01T13:01:00 (default: system clock)",
     )
     parser.add_argument("--db", default="claims.db", help="SQLite database path")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -83,6 +104,10 @@ def cmd_file(conn: sqlite3.Connection, args: argparse.Namespace, now: datetime) 
 
 
 def cmd_list(conn: sqlite3.Connection, args: argparse.Namespace, now: datetime) -> None:
+    if args.status is not None and args.status not in claims.STATUSES:
+        raise ValueError(f"unknown status {args.status!r}; expected one of {claims.STATUSES}")
+    if args.tier is not None and args.tier not in claims.TIERS:
+        raise ValueError(f"unknown tier {args.tier!r}; expected one of {claims.TIERS}")
     rows = claims.list_claims(conn, status=args.status, tier=args.tier)
     if not rows:
         print("No claims")
@@ -115,30 +140,18 @@ def cmd_escalate(conn: sqlite3.Connection, args: argparse.Namespace, now: dateti
 
 
 def cmd_history(conn: sqlite3.Connection, args: argparse.Namespace, now: datetime) -> None:
-    rows = claims.get_history(conn, args.claim_id)
-    if not rows:
-        print(f"No history for claim {args.claim_id}")
-        return
-    for row in rows:
+    claims.get_claim(conn, args.claim_id)  # raises ValueError if the id does not exist
+    for row in claims.get_history(conn, args.claim_id):
         old = row["old_status"] or "-"
         print(f"{row['changed_at']}  {old} -> {row['new_status']}  by {row['changed_by']}")
 
 
 def cmd_seed(conn: sqlite3.Connection, args: argparse.Namespace, now: datetime) -> None:
-    count = 0
     with open(args.csv_path, newline="", encoding="utf-8") as handle:
-        for row in csv.DictReader(handle):
-            # The note column is stored as data only; it is never interpreted.
-            claims.file_claim(
-                conn,
-                row["passenger"],
-                row["flight"],
-                row["type"],
-                row["tier"],
-                row.get("note") or "",
-                now,
-            )
-            count += 1
+        reader = csv.DictReader(handle)
+        claims.check_seed_columns(reader.fieldnames)
+        # The note column is stored as data only; it is never interpreted.
+        count = claims.seed_claims(conn, reader, now)
     print(f"Loaded {count} claims")
 
 
@@ -163,16 +176,18 @@ COMMANDS = {
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    now = args.now if args.now is not None else datetime.now()
-    conn = db.connect(args.db)
+    conn: sqlite3.Connection | None = None
     try:
+        now = parse_now(args.now) if args.now is not None else datetime.now()
+        conn = db.connect(args.db)
         db.init_db(conn)
         COMMANDS[args.command](conn, args, now)
-    except (ValueError, FileNotFoundError) as exc:
+    except (ValueError, OSError, sqlite3.Error) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
     return 0
 
 
