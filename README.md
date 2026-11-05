@@ -270,7 +270,22 @@ gold: open 0, overdue 5
 
 ## Code Review
 
-<!-- what /code-review found on the last PR and what you did about each finding -->
+## Code Review
+
+Ran `/code-review` on the feature/cli pull request. It could not execute the CLI in its sandbox, so the findings came from reading main.py, claims.py, db.py, the tests and the README diff. Ten findings; what I did with each:
+
+1. **Offset-aware `--now` crashes escalate/report** (naive vs aware datetime comparison raised an uncaught TypeError). Fixed: `parse_now` now rejects timestamps with a timezone offset with a clear error.
+2. **`seed` was not atomic**: a bad row part-way through left earlier rows committed. Fixed: new `claims.seed_claims()` validates every row and writes all claims and history rows in one transaction.
+3. **Missing CSV column raised a KeyError traceback.** Fixed: header is checked up front and a missing column is reported as `Error: ...`.
+4. **`main()` only caught ValueError**, so an unopenable database or directory path printed a traceback. Fixed: `db.connect` moved inside the try; `OSError` and `sqlite3.Error` are caught and reported.
+5. **Blank `--agent` / `--by` were accepted**, leaving empty actors in history. Fixed: blank actors are rejected in `claims.py`, matching the passenger/flight checks.
+6. **Walkthrough's "closing an open claim" example actually closed an already-closed claim**, and several README placeholders were unfilled. Fixed: example re-run on a fresh database; all placeholders replaced with real output; `report` added to the Run section.
+7. **`list --status escalatd` silently printed "No claims"**. Fixed: unknown status or tier is rejected with an error.
+8. **`history 999` reported "No history" with exit 0.** Fixed: a nonexistent id is now an error, consistent with assign/resolve/close.
+9. **`report_counts` loads every row and parses deadlines in Python** rather than aggregating in SQL. Accepted as-is: the tables in this lab are tiny and the Python version keeps the overdue rule in one place (`is_overdue`) rather than duplicating it in SQL. Noted as a follow-up if volume grows.
+10. **Error output drops the exception type**, so I/O and validation errors look alike on stderr. Accepted: the exit code and message are enough for a human operator, which is this tool's audience.
+
+After the fixes: `pytest -q` 43 passed, `ruff check .` clean, no test file changed.
 
 ## Stretch goals
 
