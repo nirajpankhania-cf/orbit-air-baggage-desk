@@ -290,8 +290,6 @@ After the fixes: `pytest -q` 43 passed, `ruff check .` clean, no test file chang
 ## Stretch goals
 
 ### STRETCH GOAL 1 — hook blocking test edits
-<!-- paste the blocked-edit message -->
+*Add a one-line comment at the top of tests/test_claims.py*
 
-### STRETCH GOAL 2 — report command
-### STRETCH GOAL 3 — GitHub Actions
-### STRETCH GOAL 4 — Dockerfile
+This one conflicts with a rule you set. The project’s CLAUDE.md says files under tests/ are the spec and must not be edited, and PLAN.md describes a PreToolUse hook that blocks edits to tracked test files. test_claims.py is committed, so the hook would likely reject the edit anyway.
